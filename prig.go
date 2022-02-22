@@ -32,6 +32,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"text/template"
 )
 
 func main() {
@@ -84,36 +85,17 @@ func main() {
 	if err != nil {
 		errorf("error creating temp file: %v", err)
 	}
-	write := func(s string) {
-		_, err := source.WriteString(s)
-		if err != nil {
-			errorf("error writing source code: %v", err)
-		}
-	}
 
 	// Write source code to .go file
-	write(packageHeader)
-	for imp := range imports {
-		write(fmt.Sprintf("%q\n", imp))
+	err = sourceTemplate.Execute(source, &templateParams{
+		Imports:   imports,
+		Begin:     begin,
+		PerRecord: perRecord,
+		End:       end,
+	})
+	if err != nil {
+		errorf("error executing template: %v", err)
 	}
-	write(varHeader)
-	for _, code := range begin {
-		write(code)
-		write("\n")
-	}
-	if len(perRecord) > 0 {
-		write(scanStart)
-		for _, code := range perRecord {
-			write(code)
-			write("\n")
-		}
-		write(scanEnd)
-	}
-	for _, code := range end {
-		write(code)
-		write("\n")
-	}
-	write(footer)
 	err = source.Close()
 	if err != nil {
 		errorf("error closing temp file: %v", err)
@@ -159,13 +141,21 @@ var imports = map[string]struct{}{
 	"strings": {},
 }
 
-const packageHeader = `
+type templateParams struct {
+	Imports   map[string]struct{}
+	Begin     []string
+	PerRecord []string
+	End       []string
+}
+
+var sourceTemplate = template.Must(template.New("source").Parse(`
 package main
 
 import (
-`
-
-const varHeader = `)
+{{range $imp, $_ := .Imports}}
+{{printf "%q" $imp}}
+{{end}}
+)
 
 var (
 	_output *bufio.Writer
@@ -179,24 +169,30 @@ var (
 func main() {
 	_output = bufio.NewWriter(os.Stdout)
 	defer _output.Flush()
-`
 
-const scanStart = `
+{{range .Begin}}
+{{.}}
+{{end}}
+
+{{if .PerRecord}}
 	_scanner := bufio.NewScanner(os.Stdin)
 	for _scanner.Scan() {
 		R = _scanner.Text()
         NR++
         _fields = nil
-`
 
-const scanEnd = `
+{{range .PerRecord}}
+{{.}}
+{{end}}
 	}
 	if _scanner.Err() != nil {
 		_errorf("error reading stdin: %v", _scanner.Err())
 	}
-`
+{{end}}
 
-const footer = `
+{{range .End}}
+{{.}}
+{{end}}
 }
 
 func Lower(s string) string {
@@ -259,4 +255,4 @@ func _errorf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
 }
-`
+`))
