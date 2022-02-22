@@ -174,7 +174,7 @@ func main() {
 {{.}}
 {{end}}
 
-{{if .PerRecord}}
+{{if or .PerRecord .End}}
 	_scanner := bufio.NewScanner(os.Stdin)
 	for _scanner.Scan() {
 		R = _scanner.Text()
