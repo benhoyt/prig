@@ -6,22 +6,11 @@ https://github.com/c-blake/cligen/blob/master/examples/rp.nim
 
 TODO:
 - Parse and prettify compile errors
-- Add sub/gsub equivalent
+- Add sub/gsub equivalent?
 - Add match equivalent, like Match(`regex`, s); remember RSTART, RLENGTH equivalents
   + also add shortcut for 'if Match(`regex`, R) { ... }' as '/regex/ { ... }'
-- Add split equivalent
-- Add substr equivalent
-  + do we need it, or is s[n:m] enough? (doesn't handle out of bounds gracefully)
-  + should indexes be 0-based or 1-based?
-- Add system() equivalent?
-- Add sort helpers to sort slices and map keys/values
-- Are S() I() F() the right names? Should it be F() FI() FF() instead?
-- Should we add helpers like MapI() -> make(map[string]int)?
-- Is NF() too awkward as a function instead of a var NF? With a var we couldn't have lazy splitting.
-
-
-prig -b 'c:=map[string]int{}' 'for i:=1; i<=NF(); i++ { c[Lower(S(i))]++ }' -e 'for k, v := range c { Println(k, v) }'
-awk '{ for (i=1; i<=NF; i++) c[tolower($i)]++ } END { for (k in c) { print k, c[k] } }'
+- Add sort helpers to sort slices and map keys/values?
+- Add note about which packages are auto-imported? import math, strings, etc
 
 */
 
@@ -176,18 +165,14 @@ Built-in variables:
   NR int    // number of current record (starts at 1)
 
 Built-in functions:
-  NF() int         // number of fields in current record
-  S(i int) string  // field i (starts at 1)
-  I(i int) int     // field i as int
-  F(i int) float64 // field i as float64
+  NF() int                // return number of fields in current record
+  F(i int) string         // return field i (starts at 1)
+  Int(s string) int       // convert string to int (or return 0)
+  Float(s string) float64 // convert string to float64 (or return 0.0)
 
-  Print(args ...interface{})                         // fmt.Print shortcut
-  Printf(format string, args ...interface{})         // fmt.Printf shortcut
-  Println(args ...interface{})                       // fmt.Println shortcut
-  Sprintf(format string, args ...interface{}) string // fmt.Sprintf shortcut
-
-  Lower(s string) string // strings.ToLower shortcut
-  Upper(s string) string // strings.ToUpper shortcut
+  Print(args ...interface{})                 // fmt.Print, but buffered
+  Printf(format string, args ...interface{}) // fmt.Printf, but buffered
+  Println(args ...interface{})               // fmt.Println, but buffered
 
 Examples: (TODO: test these)
   # Say hi to the world
@@ -197,9 +182,9 @@ Examples: (TODO: test these)
   prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, R) { Printf("%.0fms\n", F(5)*1000) }'
 
   # Print frequencies of unique words in input
-  prig -b 'c := map[string]int{}' \
-          'for i := 1; i <= NF(); i++ { c[Lower(S(i))]++ }' \
-       -e 'for k, v := range c { Println(k, v) }'
+  prig -b 'freqs := map[string]int{}' \
+          'for i := 1; i <= NF(); i++ { freqs[Lower(F(i))]++ }' \
+       -e 'for k, v := range freqs { Println(k, v) }'
 `
 
 var imports = map[string]struct{}{
@@ -207,6 +192,7 @@ var imports = map[string]struct{}{
 	"fmt":     {},
 	"os":      {},
 	"regexp":  {},
+	"strconv": {},
 	"strings": {},
 }
 
@@ -265,14 +251,6 @@ func main() {
 {{end}}
 }
 
-func Lower(s string) string {
-	return strings.ToLower(s)
-}
-
-func Upper(s string) string {
-	return strings.ToUpper(s)
-}
-
 func Print(args ...interface{}) {
 	_, err := fmt.Fprint(_output, args...)
 	if err != nil {
@@ -294,19 +272,25 @@ func Println(args ...interface{}) {
 	}
 }
 
-func Sprintf(format string, args ...interface{}) string {
-	return fmt.Sprintf(format, args...)
-}
-
-func S(n int) string {
-	if n == 0 {
+func F(i int) string {
+	if i == 0 {
 		return R
 	}
 	_ensureFields()
-    if n < 1 || n > len(_fields) {
+    if i < 1 || i > len(_fields) {
         return ""
     }
-    return _fields[n-1]
+    return _fields[i-1]
+}
+
+func Int(s string) int {
+	n, _ := strconv.Atoi(s)
+	return n
+}
+
+func Float(s string) float64 {
+	f, _ := strconv.ParseFloat(s, 64)
+	return f
 }
 
 var _fieldSepRegex *regexp.Regexp
