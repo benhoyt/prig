@@ -160,15 +160,13 @@ Options:
   -i import          add Go import
   -V, --version      show version number and exit
 
-Built-in variables:
-  R  string // current record
-  NR int    // number of current record (starts at 1)
-
 Built-in functions:
-  NF() int                // return number of fields in current record
   F(i int) string         // return field i (starts at 1)
-  Int(s string) int       // convert string to int (or return 0)
   Float(s string) float64 // convert string to float64 (or return 0.0)
+  Int(s string) int       // convert string to int (or return 0)
+  NF() int                // return number of fields in current record
+  NR() int                // return number of current record
+  Rec() string            // return current record
 
   Print(args ...interface{})                 // fmt.Print, but buffered
   Printf(format string, args ...interface{}) // fmt.Printf, but buffered
@@ -179,7 +177,7 @@ Examples: (TODO: test these)
   prig -b 'Println("Hello, world!")'
 
   # Print 5th field in milliseconds if record contains "GET" or "HEAD"
-  prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, R) { Printf("%.0fms\n", F(5)*1000) }'
+  prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, Rec()) { Printf("%.0fms\n", Float(F(5))*1000) }'
 
   # Print frequencies of unique words in input
   prig -b 'freqs := map[string]int{}' \
@@ -215,10 +213,8 @@ import (
 
 var (
 	_output *bufio.Writer
-
-    R  string
-    NR int
-
+	_rec string
+	_nr int
     _fields []string
 )
 
@@ -233,8 +229,8 @@ func main() {
 {{if or .PerRecord .End}}
 	_scanner := bufio.NewScanner(os.Stdin)
 	for _scanner.Scan() {
-		R = _scanner.Text()
-        NR++
+		_rec = _scanner.Text()
+        _nr++
         _fields = nil
 
 {{range .PerRecord}}
@@ -272,10 +268,15 @@ func Println(args ...interface{}) {
 	}
 }
 
+func NR() int {
+	return _nr
+}
+
+func Rec() string {
+	return _rec
+}
+
 func F(i int) string {
-	if i == 0 {
-		return R
-	}
 	_ensureFields()
     if i < 1 || i > len(_fields) {
         return ""
@@ -300,19 +301,19 @@ func _ensureFields() {
 		return
 	}
 {{if eq .FieldSep " "}}
-	_fields = strings.Fields(R)
+	_fields = strings.Fields(_rec)
 {{else}}
-	if R == "" {
+	if _rec == "" {
 		_fields = []string{}
 		return
 	}
 {{if le (len .FieldSep) 1}}
-		_fields = strings.Split(R, {{printf "%q" .FieldSep}})
+		_fields = strings.Split(_rec, {{printf "%q" .FieldSep}})
 {{else}}
 		if _fieldSepRegex == nil {
 			_fieldSepRegex = regexp.MustCompile({{printf "%q" .FieldSep}})
 		}
-		_fields = _fieldSepRegex.Split(R, -1)
+		_fields = _fieldSepRegex.Split(_rec, -1)
 {{end}}
 {{end}}
 }
@@ -320,6 +321,15 @@ func _ensureFields() {
 func NF() int {
 	_ensureFields()
 	return len(_fields)
+}
+
+func Match(pattern, s string) bool {
+	// TODO: cache compilation, handle errors better
+	matched, err := regexp.Match(pattern, []byte(s))
+	if err != nil {
+		panic(err)
+	}
+	return matched
 }
 
 func _errorf(format string, args ...interface{}) {
