@@ -6,8 +6,6 @@ https://github.com/c-blake/cligen/blob/master/examples/rp.nim
 
 TODO:
 - Parse and prettify compile errors
-- Add support for -F (changing field sep)
-  + include single-byte sep and regex
 - Add sub/gsub equivalent
 - Add match equivalent, like Match(`regex`, s); remember RSTART, RLENGTH equivalents
   + also add shortcut for 'if Match(`regex`, R) { ... }' as '/regex/ { ... }'
@@ -32,35 +30,47 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"text/template"
 )
+
+const version = "v0.1.0"
 
 func main() {
 	// Parse command line arguments
 	if len(os.Args) <= 1 {
 		errorf(usage)
 	}
+
 	var begin []string
-	var perRecord []string
 	var end []string
+	var perRecord []string
+	fieldSep := " "
+
 	for i := 1; i < len(os.Args); {
 		arg := os.Args[i]
 		i++
 
 		switch arg {
-		case "-b", "--begin":
+		case "-b":
 			if i >= len(os.Args) {
 				errorf("-b requires an argument")
 			}
 			begin = append(begin, os.Args[i])
 			i++
-		case "-e", "--end":
+		case "-e":
 			if i >= len(os.Args) {
 				errorf("-e requires an argument")
 			}
 			end = append(end, os.Args[i])
 			i++
-		case "-i", "--import":
+		case "-F":
+			if i >= len(os.Args) {
+				errorf("-F requires an argument")
+			}
+			fieldSep = os.Args[i]
+			i++
+		case "-i":
 			imports[os.Args[i]] = struct{}{}
 			if i >= len(os.Args) {
 				errorf("-e requires an argument")
@@ -69,8 +79,16 @@ func main() {
 		case "-h", "--help":
 			fmt.Println(usage)
 			return
+		case "-V", "--version":
+			fmt.Println(version)
+			return
 		default:
-			perRecord = append(perRecord, arg)
+			switch {
+			case strings.HasPrefix(arg, "-F"):
+				fieldSep = arg[2:]
+			default:
+				perRecord = append(perRecord, arg)
+			}
 		}
 	}
 
@@ -88,6 +106,7 @@ func main() {
 
 	// Write source code to .go file
 	err = sourceTemplate.Execute(source, &templateParams{
+		FieldSep:  fieldSep,
 		Imports:   imports,
 		Begin:     begin,
 		PerRecord: perRecord,
@@ -100,6 +119,8 @@ func main() {
 	if err != nil {
 		errorf("error closing temp file: %v", err)
 	}
+
+	// TODO: check that go compiler is installed and print useful help msg
 
 	// Build it with "go build"
 	exeFilename := filepath.Join(tempDir, "main")
@@ -132,16 +153,65 @@ func errorf(format string, args ...interface{}) {
 	os.Exit(1)
 }
 
-const usage = "usage: prig [-b 'begin code'] 'per-record code' [-e 'end code']"
+const usage = `Prig ` + version + ` - Copyright (c) 2022 Ben Hoyt
+
+Prig is for Processing Records In Go. It's like AWK, but the language is Go,
+so it's snobbish and statically typed. It runs 'begin code' first, then runs
+'per-record code' for every record (line) in the input, then runs 'end code'.
+
+Prig requires the Go compiler to be installed: https://go.dev/doc/install
+
+Usage: prig [options] [-b 'begin code'] 'per-record code' [-e 'end code']
+
+Options:
+  -b 'begin code'    Go code to run before processing input (multiple allowed)
+  -e 'end code'      Go code to run after processing input (multiple allowed)
+  -F char | regex    field separator (single character or multi-char regex)
+  -h, --help         show help message and exit
+  -i import          add Go import
+  -V, --version      show version number and exit
+
+Built-in variables:
+  R  string // current record
+  NR int    // number of current record (starts at 1)
+
+Built-in functions:
+  NF() int         // number of fields in current record
+  S(i int) string  // field i (starts at 1)
+  I(i int) int     // field i as int
+  F(i int) float64 // field i as float64
+
+  Print(args ...interface{})                         // fmt.Print shortcut
+  Printf(format string, args ...interface{})         // fmt.Printf shortcut
+  Println(args ...interface{})                       // fmt.Println shortcut
+  Sprintf(format string, args ...interface{}) string // fmt.Sprintf shortcut
+
+  Lower(s string) string // strings.ToLower shortcut
+  Upper(s string) string // strings.ToUpper shortcut
+
+Examples: (TODO: test these)
+  # Say hi to the world
+  prig -b 'Println("Hello, world!")'
+
+  # Print 5th field in milliseconds if record contains "GET" or "HEAD"
+  prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, R) { Printf("%.0fms\n", F(5)*1000) }'
+
+  # Print frequencies of unique words in input
+  prig -b 'c := map[string]int{}' \
+          'for i := 1; i <= NF(); i++ { c[Lower(S(i))]++ }' \
+       -e 'for k, v := range c { Println(k, v) }'
+`
 
 var imports = map[string]struct{}{
 	"bufio":   {},
 	"fmt":     {},
 	"os":      {},
+	"regexp":  {},
 	"strings": {},
 }
 
 type templateParams struct {
+	FieldSep  string
 	Imports   map[string]struct{}
 	Begin     []string
 	PerRecord []string
@@ -239,11 +309,28 @@ func S(n int) string {
     return _fields[n-1]
 }
 
+var _fieldSepRegex *regexp.Regexp
+
 func _ensureFields() {
 	if _fields != nil {
 		return
 	}
+{{if eq .FieldSep " "}}
 	_fields = strings.Fields(R)
+{{else}}
+	if R == "" {
+		_fields = []string{}
+		return
+	}
+{{if le (len .FieldSep) 1}}
+		_fields = strings.Split(R, {{printf "%q" .FieldSep}})
+{{else}}
+		if _fieldSepRegex == nil {
+			_fieldSepRegex = regexp.MustCompile({{printf "%q" .FieldSep}})
+		}
+		_fields = _fieldSepRegex.Split(R, -1)
+{{end}}
+{{end}}
 }
 
 func NF() int {
