@@ -7,10 +7,14 @@ https://github.com/c-blake/cligen/blob/master/examples/rp.nim
 TODO:
 - Parse and prettify compile errors
 - Add sub/gsub equivalent?
+- Add Slice / Substr equivalent? because Go's s[n:m] may panic
 - Add match equivalent, like Match(`regex`, s); remember RSTART, RLENGTH equivalents
   + also add shortcut for 'if Match(`regex`, R) { ... }' as '/regex/ { ... }'
 - Add sort helpers to sort slices and map keys/values?
 - Add note about which packages are auto-imported? import math, strings, etc
+  + or consider using goimports to do this automatically? test performance hit
+- Have mode to print (gofmt'd?) source
+- Have mode to keep executable
 
 */
 
@@ -144,11 +148,10 @@ func errorf(format string, args ...interface{}) {
 
 const usage = `Prig ` + version + ` - Copyright (c) 2022 Ben Hoyt
 
-Prig is for Processing Records In Go. It's like AWK, but the language is Go,
-so it's snobbish and statically typed. It runs 'begin code' first, then runs
-'per-record code' for every record (line) in the input, then runs 'end code'.
-
-Prig requires the Go compiler to be installed: https://go.dev/doc/install
+Prig is for Processing Records In Go. It's like AWK, but snobbish (Go! static
+typing!). It runs 'begin code' first, then runs 'per-record code' for every
+record (line) in the input, then runs 'end code'. Prig uses "go build", so it
+requires the Go compiler: https://go.dev/doc/install
 
 Usage: prig [options] [-b 'begin code'] 'per-record code' [-e 'end code']
 
@@ -161,12 +164,11 @@ Options:
   -V, --version      show version number and exit
 
 Built-in functions:
-  F(i int) string         // return field i (starts at 1)
+  F(i int) string         // return field i (starts at 1; 0 is current record)
   Float(s string) float64 // convert string to float64 (or return 0.0)
   Int(s string) int       // convert string to int (or return 0)
   NF() int                // return number of fields in current record
   NR() int                // return number of current record
-  Rec() string            // return current record
 
   Print(args ...interface{})                 // fmt.Print, but buffered
   Printf(format string, args ...interface{}) // fmt.Printf, but buffered
@@ -177,7 +179,7 @@ Examples: (TODO: test these)
   prig -b 'Println("Hello, world!")'
 
   # Print 5th field in milliseconds if record contains "GET" or "HEAD"
-  prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, Rec()) { Printf("%.0fms\n", Float(F(5))*1000) }'
+  prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, F(0)) { Printf("%.0fms\n", Float(F(5))*1000) }'
 
   # Print frequencies of unique words in input
   prig -b 'freqs := map[string]int{}' \
@@ -213,8 +215,8 @@ import (
 
 var (
 	_output *bufio.Writer
-	_rec string
-	_nr int
+	_record string
+	_nr     int
     _fields []string
 )
 
@@ -229,7 +231,7 @@ func main() {
 {{if or .PerRecord .End}}
 	_scanner := bufio.NewScanner(os.Stdin)
 	for _scanner.Scan() {
-		_rec = _scanner.Text()
+		_record = _scanner.Text()
         _nr++
         _fields = nil
 
@@ -272,11 +274,10 @@ func NR() int {
 	return _nr
 }
 
-func Rec() string {
-	return _rec
-}
-
 func F(i int) string {
+	if i == 0 {
+		return _record
+	}
 	_ensureFields()
     if i < 1 || i > len(_fields) {
         return ""
@@ -301,19 +302,19 @@ func _ensureFields() {
 		return
 	}
 {{if eq .FieldSep " "}}
-	_fields = strings.Fields(_rec)
+	_fields = strings.Fields(_record)
 {{else}}
-	if _rec == "" {
+	if _record == "" {
 		_fields = []string{}
 		return
 	}
 {{if le (len .FieldSep) 1}}
-		_fields = strings.Split(_rec, {{printf "%q" .FieldSep}})
+		_fields = strings.Split(_record, {{printf "%q" .FieldSep}})
 {{else}}
 		if _fieldSepRegex == nil {
 			_fieldSepRegex = regexp.MustCompile({{printf "%q" .FieldSep}})
 		}
-		_fields = _fieldSepRegex.Split(_rec, -1)
+		_fields = _fieldSepRegex.Split(_record, -1)
 {{end}}
 {{end}}
 }
