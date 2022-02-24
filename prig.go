@@ -113,17 +113,25 @@ func main() {
 		errorf("error closing temp file: %v", err)
 	}
 
-	// TODO: check that go compiler is installed and print useful help msg
+	// Ensure that Go is installed
+	_, err = exec.LookPath("go")
+	if err != nil {
+		errorf("You must install Go to use 'prig', see https://go.dev/doc/install")
+	}
 
 	// Build it with "go build"
 	exeFilename := filepath.Join(tempDir, "main")
 	cmd := exec.Command("go", "build", "-o", exeFilename, goFilename)
 	output, err := cmd.CombinedOutput()
-	if err != nil {
+	switch err := err.(type) {
+	case nil:
+	case *exec.ExitError:
 		// TODO: parse and prettify compile errors?
 		b, _ := os.ReadFile(goFilename)
 		fmt.Fprint(os.Stderr, string(b), "\n", string(output))
 		os.Exit(1)
+	default:
+		errorf("error building program: %v", err)
 	}
 
 	// Then run the executable we just built
@@ -134,10 +142,10 @@ func main() {
 	err = cmd.Run()
 	if err != nil {
 		exitCode := cmd.ProcessState.ExitCode()
-		if exitCode != -1 {
-			os.Exit(exitCode)
+		if exitCode == -1 {
+			errorf("error running program: %v", err)
 		}
-		errorf("error running program: %v", err)
+		os.Exit(exitCode)
 	}
 }
 
