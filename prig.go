@@ -6,10 +6,6 @@ https://github.com/c-blake/cligen/blob/master/examples/rp.nim
 
 TODO:
 - Parse and prettify compile errors
-- Add sub/gsub equivalent?
-- Add Slice / Substr equivalent? because Go's s[n:m] may panic
-- Add match equivalent, like Match(`regex`, s); remember RSTART, RLENGTH equivalents
-  + also add shortcut for 'if Match(`regex`, R) { ... }' as '/regex/ { ... }'
 - Add sort helpers to sort slices and map keys/values?
 - Add note about which packages are auto-imported? import math, strings, etc
   + or consider using goimports to do this automatically? test performance hit
@@ -119,7 +115,7 @@ func main() {
 		errorf("You must install Go to use 'prig', see https://go.dev/doc/install")
 	}
 
-	// Build it with "go build"
+	// Build the program with "go build"
 	exeFilename := filepath.Join(tempDir, "main")
 	cmd := exec.Command("go", "build", "-o", exeFilename, goFilename)
 	output, err := cmd.CombinedOutput()
@@ -166,7 +162,7 @@ Usage: prig [options] [-b 'begin code'] 'per-record code' [-e 'end code']
 Options:
   -b 'begin code'    Go code to run before processing input (multiple allowed)
   -e 'end code'      Go code to run after processing input (multiple allowed)
-  -F char | regex    field separator (single character or multi-char regex)
+  -F char | re       field separator (single character or multi-char regex)
   -h, --help         show help message and exit
   -i import          add Go import
   -V, --version      show version number and exit
@@ -177,6 +173,11 @@ Built-in functions:
   Int(s string) int       // convert string to int (or return 0)
   NF() int                // return number of fields in current record
   NR() int                // return number of current record
+
+  Replace(re, s, repl string) string  // replace all re matches in s with repl
+  Match(re, s string) bool            // report whether s contains match of re
+  Submatches(re, s string) []string   // return slice of submatches of re in s
+  Substr(s string, n[, m] int) string // s[n:m] but safe and allow negative n/m
 
   Print(args ...interface{})                 // fmt.Print, but buffered
   Printf(format string, args ...interface{}) // fmt.Printf, but buffered
@@ -332,13 +333,70 @@ func NF() int {
 	return len(_fields)
 }
 
-func Match(pattern, s string) bool {
-	// TODO: cache compilation, handle errors better
-	matched, err := regexp.Match(pattern, []byte(s))
-	if err != nil {
-		panic(err)
+func Match(re, s string) bool {
+	regex := _reCompile(re)
+	return regex.MatchString(s)
+}
+
+func Replace(re, s, repl string) string {
+	regex := _reCompile(re)
+	return regex.ReplaceAllString(s, repl)
+}
+
+func Submatches(re, s string) []string {
+	regex := _reCompile(re)
+	return regex.FindStringSubmatch(s)
+}
+
+var _reCache = make(map[string]*regexp.Regexp)
+
+func _reCompile(re string) *regexp.Regexp {
+	if regex, ok := _reCache[re]; ok {
+		return regex
 	}
-	return matched
+	regex, err := regexp.Compile(re)
+	if err != nil {
+		_errorf("invalid regex %q: %v", re, err)
+	}
+	// Dumb, non-LRU cache: just cache the first 100 regexes
+	if len(_reCache) < 100 {
+		_reCache[re] = regex
+	}
+	return regex
+}
+
+func Substr(s string, n int, ms ...int) string {
+	var m int
+	switch len(ms) {
+	case 0:
+		m = len(s)
+	case 1:
+		m = ms[0]
+	default:
+		_errorf("Substr() takes 2 or 3 arguments")
+	}
+
+	if n < 0 {
+		n = len(s) + n
+	}
+	if n < 0 {
+		n = 0
+	}
+	if n > len(s) {
+		n = len(s)
+	}
+
+	if m < 0 {
+		m = len(s) + m
+	}
+	if m < 0 {
+		m = 0
+	}
+	if m > len(s) {
+		m = len(s)
+	}
+
+	return s[n:m]
 }
 
 func _errorf(format string, args ...interface{}) {
