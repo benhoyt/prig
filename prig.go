@@ -5,11 +5,13 @@ Based on a similar idea for Nim:
 https://github.com/c-blake/cligen/blob/master/examples/rp.nim
 
 TODO:
+- Finish tests
 - Consider making this a Go 1.18 showcase with Sort / SortMap
   + make it work with 1.17 but add optional Sort[T] and SortMap[T] with Go 1.18
   + or maybe make it use interface{} in Go 1.17 but type safe in Go 1.18
     - Sort(s interface{}) []interface{}
     - SortMap(m interface{}) []KV
+    - sort.go vs sort_117.go
 - Add note about which packages are auto-imported? import math, strings, etc
   + or consider using goimports to do this automatically? test performance hit
 
@@ -87,6 +89,13 @@ func main() {
 			default:
 				perRecord = append(perRecord, arg)
 			}
+		}
+	}
+
+	if len(fieldSep) > 1 {
+		_, err := regexp.Compile(fieldSep)
+		if err != nil {
+			errorf("invalid field separator: %v", err)
 		}
 	}
 
@@ -220,6 +229,9 @@ func formatErrorChunk(source, id, prefix string, chunk []string, line, col int, 
 		return fmt.Sprintf("main.go:%d:%d: %s", line, col, message)
 	}
 	curLine := strings.Count(source[:pos], "\n") + 2
+	if line < curLine {
+		return fmt.Sprintf("main.go:%d:%d: %s", line, col, message)
+	}
 	for i, block := range chunk {
 		numLines := strings.Count(block, "\n") + 1
 		if curLine+numLines > line {
@@ -340,6 +352,8 @@ import (
 {{- printf "%q" $imp}}
 {{end -}}
 )
+
+var _ = strings.Fields // to silence import warning in some cases
 
 var (
 	_output *bufio.Writer
