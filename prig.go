@@ -1,12 +1,12 @@
+// Prig is for Processing Records In Go. It's like AWK, but snobbish.
+//
+// It is based on a similar idea for Nim:
+// https://github.com/c-blake/cligen/blob/master/examples/rp.nim
+//
+// Prig code is licensed under the MIT License.
+//
+// See README.md for more details.
 package main
-
-/*
-Based on a similar idea for Nim:
-https://github.com/c-blake/cligen/blob/master/examples/rp.nim
-
-TODO:
-- hmm, is Sort/SortMap the best API?
-*/
 
 import (
 	"bytes"
@@ -273,7 +273,7 @@ Built-in functions:
     // also Sort(s[, ByValue][, Reverse]) to sort by value or descending
 
 Examples:
-  # Say hello to the world
+  # Say hi to the world
   ` + exampleHelloWorld + `
 
   # Print the average value of the last field
