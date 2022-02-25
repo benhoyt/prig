@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TODO: add TestMain to build ./prig
+// TODO: add TestMain to build ./prig?
 
 type test struct {
 	name string
@@ -166,11 +166,6 @@ p
 		out: "[] []\n[B b A x] [A B b x]\n[B b A x] [x b B A]\n",
 	},
 	{
-		name: "Sort() invalid type",
-		args: []string{`-b`, `Println(Sort(42))`},
-		err:  "Sort type must be int, float64, or string\n",
-	},
-	{
 		name: "Sort() invalid option",
 		args: []string{`-b`, `Println(Sort([]int{4, 2}, ByValue))`},
 		err:  "Sort option ByValue not valid\n",
@@ -234,11 +229,6 @@ b 1
 [{d 1} {c 0} {b 1} {a 2}]
 [{a 2} {d 1} {b 1} {c 0}]
 `[1:],
-	},
-	{
-		name: "SortMap() invalid type",
-		args: []string{`-b`, `Println(SortMap(map[string]uint{}))`},
-		err:  "SortMap values must be int, float64, or string\n",
 	},
 	{
 		name: "SortMap() invalid option",
@@ -337,7 +327,10 @@ func runTests(t *testing.T, tests []test) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			in := strings.NewReader(test.in)
-			cmd := exec.Command("./prig", test.args...)
+			args := []string{}
+			//			args := []string{"-g", "go1.18rc1"} // TODO: use go binary that called us
+			args = append(args, test.args...)
+			cmd := exec.Command("./prig", args...)
 			cmd.Stdin = in
 			outputBytes, err := cmd.CombinedOutput()
 			output := string(outputBytes)
