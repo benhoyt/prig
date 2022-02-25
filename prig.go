@@ -282,10 +282,10 @@ Built-in functions:
   Submatches(re, s string) []string   // return slice of submatches of re in s
   Substr(s string, n[, m] int) string // s[n:m] but safe and allow negative n/m
 
-  SortInts(s []int[, options]) []int               // return new sorted slice
-    // also SortFloats, SortStrings; options are Reverse
-  SortMapInts(m map[string]int[, options]) []KVInt // return sorted map items
-    // also SortMapFloats, SortMapStrings; options are Reverse, ByValue
+  Sort(s []T) []T // return new sorted slice (T is int, float64, string)
+    // also Sort(s, Reverse) to sort descending
+  SortMap(m map[string]T) []KV // return sorted slice of key-value pairs
+    // also Sort(s[, ByValue][, Reverse]) to sort by value or descending
 
 Examples:
   # Say hello to the world
@@ -306,7 +306,7 @@ const (
 	exampleMilliseconds = `prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, F(0)) { Printf("%.0fms\n", Float(F(3))*1000) }'`
 	exampleFrequencies  = `prig -b 'freqs := map[string]int{}' \
        'for i := 1; i <= NF(); i++ { freqs[strings.ToLower(F(i))]++ }' \
-       -e 'for _, f := range SortMapInts(freqs, ByValue, Reverse) { ' \
+       -e 'for _, f := range SortMap(freqs, ByValue, Reverse) { ' \
        -e 'Println(f.K, f.V) }'`
 )
 
@@ -528,81 +528,66 @@ const (
 	ByValue
 )
 
-func _getSortOptions(options []_sortOption, funcName string) (reverse bool) {
+func Sort(s interface{}, options ..._sortOption) (result []interface{}) {
+	reverse := false
 	for _, option := range options {
 		switch option {
 		case Reverse:
 			reverse = true
 		case ByValue:
-			_errorf("invalid %s option ByValue", funcName)
+			_errorf("Sort option ByValue invalid")
 		default:
-			_errorf("invalid %s option %d", funcName, option)
+			_errorf("Sort option %d invalid", option)
 		}
 	}
-	return reverse
-}
 
-func SortInts(s []int, options ..._sortOption) []int {
-	reverse := _getSortOptions(options, "SortInts")
-	cp := make([]int, len(s))
-	copy(cp, s)
-	sort.Ints(cp)
+	switch s := s.(type) {
+	case []int:
+		cp := make([]int, len(s))
+		copy(cp, s)
+		sort.Ints(cp)
+		result = make([]interface{}, len(s))
+		for i, x := range cp {
+			result[i] = x
+		}
+	case []float64:
+		cp := make([]float64, len(s))
+		copy(cp, s)
+		sort.Float64s(cp)
+		result = make([]interface{}, len(s))
+		for i, x := range cp {
+			result[i] = x
+		}
+	case []string:
+		cp := make([]string, len(s))
+		copy(cp, s)
+		sort.Strings(cp)
+		result = make([]interface{}, len(s))
+		for i, x := range cp {
+			result[i] = x
+		}
+	default:
+		_errorf("Sort type must be int, float64, or string")
+	}
+
 	if reverse {
-		for i, j := 0, len(cp)-1; i < len(cp)/2; i, j = i+1, j-1 {
-			tmp := cp[i]
-			cp[i] = cp[j]
-			cp[j] = tmp
+		for i, j := 0, len(result)-1; i < len(result)/2; i, j = i+1, j-1 {
+			tmp := result[i]
+			result[i] = result[j]
+			result[j] = tmp
 		}
 	}
-	return cp
+	return result
 }
 
-func SortFloats(s []float64, options ..._sortOption) []float64 {
-	reverse := _getSortOptions(options, "SortFloats")
-	cp := make([]float64, len(s))
-	copy(cp, s)
-	sort.Float64s(cp)
-	if reverse {
-		for i, j := 0, len(cp)-1; i < len(cp)/2; i, j = i+1, j-1 {
-			tmp := cp[i]
-			cp[i] = cp[j]
-			cp[j] = tmp
-		}
-	}
-	return cp
-}
-
-func SortStrings(s []string, options ..._sortOption) []string {
-	reverse := _getSortOptions(options, "SortStrings")
-	cp := make([]string, len(s))
-	copy(cp, s)
-	sort.Strings(cp)
-	if reverse {
-		for i, j := 0, len(cp)-1; i < len(cp)/2; i, j = i+1, j-1 {
-			tmp := cp[i]
-			cp[i] = cp[j]
-			cp[j] = tmp
-		}
-	}
-	return cp
-}
-
-type KVInt struct {
+type KV struct {
 	K string
-	V int
+	V interface{}
 }
 
-type KVFloat struct {
-	K string
-	V float64
-}
-
-type KVString struct {
-	K string
-	V string
-}
-
-func _getSortMapOptions(options []_sortOption, funcName string) (reverse, byValue bool) {
+func SortMap(m interface{}, options ..._sortOption) []KV {
+	reverse := false
+	byValue := false
 	for _, option := range options {
 		switch option {
 		case Reverse:
@@ -610,95 +595,57 @@ func _getSortMapOptions(options []_sortOption, funcName string) (reverse, byValu
 		case ByValue:
 			byValue = true
 		default:
-			_errorf("invalid %s option %d", funcName, option)
+			_errorf("Sort option %d invalid", option)
 		}
 	}
-	return reverse, byValue
-}
 
-func SortMapInts(m map[string]int, options ..._sortOption) []KVInt {
-	reverse, byValue := _getSortMapOptions(options, "SortMapInts")
-	kvs := make([]KVInt, 0, len(m))
-	for k, v := range m {
-		kvs = append(kvs, KVInt{k, v})
+	var kvs []KV
+	var vLess func(i, j int) bool
+	switch m := m.(type) {
+	case map[string]int:
+ 		kvs = make([]KV, 0, len(m))
+ 		for k, v := range m {
+			kvs = append(kvs, KV{k, v})
+		}
+		vLess = func(i, j int) bool {
+			return kvs[i].V.(int) < kvs[j].V.(int)
+		}
+	case map[string]float64:
+ 		kvs = make([]KV, 0, len(m))
+		for k, v := range m {
+			kvs = append(kvs, KV{k, v})
+		}
+		vLess = func(i, j int) bool {
+			return kvs[i].V.(float64) < kvs[j].V.(float64)
+		}
+	case map[string]string:
+ 		kvs = make([]KV, 0, len(m))
+		for k, v := range m {
+			kvs = append(kvs, KV{k, v})
+		}
+		vLess = func(i, j int) bool {
+			return kvs[i].V.(string) < kvs[j].V.(string)
+		}
+	default:
+		_errorf("SortMap values must be int, float64, or string")
 	}
+
 	if byValue {
 		sort.Slice(kvs, func (i, j int) bool {
 			if kvs[i].V == kvs[j].V {
 				return kvs[i].K < kvs[j].K
 			}
-			return kvs[i].V < kvs[j].V
+			return vLess(i, j)
 		})
 	} else {
 		sort.Slice(kvs, func (i, j int) bool {
 			if kvs[i].K == kvs[j].K {
-				return kvs[i].V < kvs[j].V
+				return vLess(i, j)
 			}
 			return kvs[i].K < kvs[j].K
 		})
 	}
-	if reverse {
-		for i, j := 0, len(kvs)-1; i < len(kvs)/2; i, j = i+1, j-1 {
-			tmp := kvs[i]
-			kvs[i] = kvs[j]
-			kvs[j] = tmp
-		}
-	}
-	return kvs
-}
 
-func SortMapFloats(m map[string]float64, options ..._sortOption) []KVFloat {
-	reverse, byValue := _getSortMapOptions(options, "SortMapFloats")
-	kvs := make([]KVFloat, 0, len(m))
-	for k, v := range m {
-		kvs = append(kvs, KVFloat{k, v})
-	}
-	if byValue {
-		sort.Slice(kvs, func (i, j int) bool {
-			if kvs[i].V == kvs[j].V {
-				return kvs[i].K < kvs[j].K
-			}
-			return kvs[i].V < kvs[j].V
-		})
-	} else {
-		sort.Slice(kvs, func (i, j int) bool {
-			if kvs[i].K == kvs[j].K {
-				return kvs[i].V < kvs[j].V
-			}
-			return kvs[i].K < kvs[j].K
-		})
-	}
-	if reverse {
-		for i, j := 0, len(kvs)-1; i < len(kvs)/2; i, j = i+1, j-1 {
-			tmp := kvs[i]
-			kvs[i] = kvs[j]
-			kvs[j] = tmp
-		}
-	}
-	return kvs
-}
-
-func SortMapStrings(m map[string]string, options ..._sortOption) []KVString {
-	reverse, byValue := _getSortMapOptions(options, "SortMapStrings")
-	kvs := make([]KVString, 0, len(m))
-	for k, v := range m {
-		kvs = append(kvs, KVString{k, v})
-	}
-	if byValue {
-		sort.Slice(kvs, func (i, j int) bool {
-			if kvs[i].V == kvs[j].V {
-				return kvs[i].K < kvs[j].K
-			}
-			return kvs[i].V < kvs[j].V
-		})
-	} else {
-		sort.Slice(kvs, func (i, j int) bool {
-			if kvs[i].K == kvs[j].K {
-				return kvs[i].V < kvs[j].V
-			}
-			return kvs[i].K < kvs[j].K
-		})
-	}
 	if reverse {
 		for i, j := 0, len(kvs)-1; i < len(kvs)/2; i, j = i+1, j-1 {
 			tmp := kvs[i]
