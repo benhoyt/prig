@@ -283,48 +283,6 @@ b 1
 		err:  "invalid field separator: error parsing regexp: missing closing ]: `[.,`\n",
 	},
 	{
-		name: "compile errors",
-		args: []string{`-b`, `B`, `@`, `-e`, `E`},
-		err: `
-begin1:1:1: undefined: B
-B
-^
-perrecord1:1:1: invalid character U+0040 '@'
-@
-^
-end1:1:1: undefined: E
-E
-^
-`[1:],
-	},
-	{
-		name: "compile error line number - begin",
-		args: []string{`-b`, "if true {\n    foo\n}"},
-		err: `
-begin1:2:5: undefined: foo
-    foo
-    ^
-`[1:],
-	},
-	{
-		name: "compile error line number - per-record",
-		args: []string{"if true {\n    foo\n}"},
-		err: `
-perrecord1:2:5: undefined: foo
-    foo
-    ^
-`[1:],
-	},
-	{
-		name: "compile error line number - end",
-		args: []string{`-e`, "if true {\n    foo\n}"},
-		err: `
-end1:2:5: undefined: foo
-    foo
-    ^
-`[1:],
-	},
-	{
 		name: "version -V",
 		args: []string{`-V`},
 		out:  version + "\n",
@@ -333,6 +291,29 @@ end1:2:5: undefined: foo
 		name: "version --version",
 		args: []string{`--version`},
 		out:  version + "\n",
+	},
+	{
+		name: "auto-import",
+		args: []string{`-b`, `Printf("%.2f", math.Pi)`},
+		out:  "3.14",
+	},
+	{
+		name: "import flag - text",
+		args: []string{
+			`-i`, `text/template`,
+			`-b`, `t := template.Must(template.New("").Parse("{{.}}"))`,
+			`-b`, `err := t.Execute(os.Stdout, "<b>foo</b>"); if err != nil { panic(err) }`,
+		},
+		out: "<b>foo</b>",
+	},
+	{
+		name: "import flag - html",
+		args: []string{
+			`-i`, `html/template`,
+			`-b`, `t := template.Must(template.New("").Parse("{{.}}"))`,
+			`-b`, `err := t.Execute(os.Stdout, "<b>foo</b>"); if err != nil { panic(err) }`,
+		},
+		out: "&lt;b&gt;foo&lt;/b&gt;",
 	},
 }
 

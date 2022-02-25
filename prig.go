@@ -5,15 +5,11 @@ Based on a similar idea for Nim:
 https://github.com/c-blake/cligen/blob/master/examples/rp.nim
 
 TODO:
-- Add note about which packages are auto-imported? import math, strings, etc
-  + or consider using goimports to do this automatically? test performance hit
-
+- hmm, is Sort/SortMap the best API?
 */
 
 import (
 	"bytes"
-	"crypto/rand"
-	"crypto/sha1"
 	"fmt"
 	"os"
 	"os/exec"
@@ -22,6 +18,9 @@ import (
 	"strconv"
 	"strings"
 	"text/template"
+	"unicode/utf8"
+
+	importspkg "golang.org/x/tools/imports"
 )
 
 const version = "v0.1.0"
@@ -73,7 +72,7 @@ func main() {
 		case "-i":
 			imports[os.Args[i]] = struct{}{}
 			if i >= len(os.Args) {
-				errorf("-e requires an argument")
+				errorf("-i requires an argument")
 			}
 			i++
 		case "-h", "--help":
@@ -118,24 +117,27 @@ func main() {
 	// Write source code to buffer
 	var buffer bytes.Buffer
 	params := &templateParams{
-		FieldSep:    fieldSep,
-		Imports:     imports,
-		BeginID:     randomID(),
-		Begin:       begin,
-		PerRecordID: randomID(),
-		PerRecord:   perRecord,
-		EndID:       randomID(),
-		End:         end,
-		SortFuncs:   sortFuncs,
+		FieldSep:  fieldSep,
+		Imports:   imports,
+		Begin:     begin,
+		PerRecord: perRecord,
+		End:       end,
+		SortFuncs: sortFuncs,
 	}
 	err = sourceTemplate.Execute(&buffer, params)
 	if err != nil {
 		errorf("error executing template: %v", err)
 	}
-	sourceBytes := buffer.Bytes()
+	bufferBytes := buffer.Bytes()
 
+	// Add imports (also pretty-prints for printSource mode).
+	sourceBytes, err := importspkg.Process("", bufferBytes, nil)
+	if err != nil {
+		parsed := parseErrors(err.Error(), string(bufferBytes), params)
+		fmt.Fprint(os.Stderr, parsed)
+		os.Exit(1)
+	}
 	if printSource {
-		// TODO: go fmt it (or just let tools/imports do that?)
 		fmt.Print(string(sourceBytes))
 		return
 	}
@@ -165,11 +167,7 @@ func main() {
 	switch err.(type) {
 	case nil:
 	case *exec.ExitError:
-		source, err := os.ReadFile(goFilename)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "error reading source file: %v", err)
-		}
-		parsed := parseErrors(string(output), string(source), params)
+		parsed := parseErrors(string(output), string(sourceBytes), params)
 		fmt.Fprint(os.Stderr, parsed)
 		os.Exit(1)
 	default:
@@ -191,17 +189,7 @@ func main() {
 	}
 }
 
-func randomID() string {
-	b := make([]byte, 20)
-	_, err := rand.Read(b)
-	if err != nil {
-		errorf("error generating random bytes: %v", err)
-	}
-	h := sha1.Sum(b)
-	return fmt.Sprintf("%x", h)
-}
-
-var compileErrorRe = regexp.MustCompile(`.*\.go:(\d+):(\d+): (.*)`)
+var compileErrorRe = regexp.MustCompile(`^(.*:)?(\d+):(\d+): (.*)`)
 
 func parseErrors(buildOutput string, source string, params *templateParams) string {
 	var builder strings.Builder
@@ -215,59 +203,26 @@ func parseErrors(buildOutput string, source string, params *templateParams) stri
 			fmt.Fprintf(&builder, "%s\n", line)
 			continue
 		}
-		lineNum, _ := strconv.Atoi(matches[1])
-		colNum, _ := strconv.Atoi(matches[2])
-		message := matches[3]
-		builder.WriteString(formatError(source, params, lineNum, colNum, message))
-		builder.WriteString("\n")
+		lineNum, _ := strconv.Atoi(matches[2])
+		colNum, _ := strconv.Atoi(matches[3])
+		message := matches[4]
+		sourceLine, caretLine := getSourceCaretLine(source, lineNum, colNum)
+		fmt.Fprintf(&builder, "main.go:%d:%d: %s\n%s\n%s\n", lineNum, colNum, message, sourceLine, caretLine)
 	}
 	return builder.String()
 }
 
-func formatError(source string, params *templateParams, line, col int, message string) string {
-	formatted := formatErrorChunk(source, params.BeginID, "begin", params.Begin, line, col, message)
-	if formatted != "" {
-		return formatted
-	}
-	formatted = formatErrorChunk(source, params.PerRecordID, "perrecord", params.PerRecord, line, col, message)
-	if formatted != "" {
-		return formatted
-	}
-	formatted = formatErrorChunk(source, params.EndID, "end", params.End, line, col, message)
-	if formatted != "" {
-		return formatted
-	}
-	return fmt.Sprintf("main.go:%d:%d: %s", line, col, message)
-}
-
-func formatErrorChunk(source, id, prefix string, chunk []string, line, col int, message string) string {
-	pos := strings.Index(source, id)
-	if pos < 0 {
-		return fmt.Sprintf("main.go:%d:%d: %s", line, col, message)
-	}
-	curLine := strings.Count(source[:pos], "\n") + 2
-	if line < curLine {
-		return fmt.Sprintf("main.go:%d:%d: %s", line, col, message)
-	}
-	for i, block := range chunk {
-		numLines := strings.Count(block, "\n") + 1
-		if curLine+numLines > line {
-			relLine := line - curLine + 1
-			sourceLine := getSourceLine(block, relLine)
-			caretLine := strings.Repeat(" ", col-1) + "^"
-			return fmt.Sprintf("%s%d:%d:%d: %s\n%s\n%s", prefix, i+1, relLine, col, message, sourceLine, caretLine)
-		}
-		curLine += numLines
-	}
-	return ""
-}
-
-func getSourceLine(block string, line int) string {
-	lines := strings.Split(block, "\n")
+func getSourceCaretLine(source string, line, col int) (sourceLine, caretLine string) {
+	lines := strings.Split(source, "\n")
 	if line < 1 || line > len(lines) {
-		return ""
+		return "", ""
 	}
-	return lines[line-1]
+	sourceLine = lines[line-1]
+	numTabs := strings.Count(sourceLine[:col-1], "\t")
+	runeColumn := utf8.RuneCountInString(sourceLine[:col-1])
+	sourceLine = strings.Replace(sourceLine, "\t", "    ", -1)
+	caretLine = strings.Repeat(" ", runeColumn) + strings.Repeat("   ", numTabs) + "^"
+	return sourceLine, caretLine
 }
 
 func errorf(format string, args ...interface{}) {
@@ -292,7 +247,7 @@ Options:
   -F char | re       field separator (single character or multi-char regex)
   -g executable      Go compiler to use (eg: "go1.18rc1", default "go")
   -h, --help         print help message and exit
-  -i import          add Go import
+  -i import          import Go package (only needed to disambiguate imports)
   -s                 print formatted Go source instead of running
   -V, --version      print version number and exit
 
@@ -351,15 +306,12 @@ var imports = map[string]struct{}{
 }
 
 type templateParams struct {
-	FieldSep    string
-	Imports     map[string]struct{}
-	BeginID     string
-	Begin       []string
-	PerRecord   []string
-	PerRecordID string
-	End         []string
-	EndID       string
-	SortFuncs   string
+	FieldSep  string
+	Imports   map[string]struct{}
+	Begin     []string
+	PerRecord []string
+	End       []string
+	SortFuncs string
 }
 
 var sourceTemplate = template.Must(template.New("source").Parse(`// Code generated by Prig (https://github.com/benhoyt/prig). DO NOT EDIT.
@@ -372,8 +324,6 @@ import (
 {{end -}}
 )
 
-var _ = strings.Fields // to silence import warning in some cases
-
 var (
 	_output *bufio.Writer
 	_record string
@@ -385,7 +335,6 @@ func main() {
 	_output = bufio.NewWriter(os.Stdout)
 	defer _output.Flush()
 
-	// begin: {{.BeginID -}}
 {{range .Begin}}
 {{. -}}
 {{end}}
@@ -397,7 +346,6 @@ func main() {
         _nr++
         _fields = nil
 
-    // per-record: {{.PerRecordID -}}
 {{range .PerRecord}}
 {{. -}}
 {{end}}
@@ -407,7 +355,6 @@ func main() {
 	}
 {{end}}
 
-    // end: {{.EndID -}}
 {{range .End}}
 {{. -}}
 {{end}}
