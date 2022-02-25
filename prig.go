@@ -5,7 +5,6 @@ Based on a similar idea for Nim:
 https://github.com/c-blake/cligen/blob/master/examples/rp.nim
 
 TODO:
-- Finish tests
 - Consider making this a Go 1.18 showcase with Sort / SortMap
   + make it work with 1.17 but add optional Sort[T] and SortMap[T] with Go 1.18
   + or maybe make it use interface{} in Go 1.17 but type safe in Go 1.18
@@ -431,7 +430,10 @@ func F(i int) string {
 }
 
 func Int(s string) int {
-	n, _ := strconv.Atoi(s)
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return int(Float(s))
+	}
 	return n
 }
 
@@ -481,7 +483,11 @@ func Replace(re, s, repl string) string {
 
 func Submatches(re, s string) []string {
 	regex := _reCompile(re)
-	return regex.FindStringSubmatch(s)
+	matches := regex.FindStringSubmatch(s)
+	if matches == nil {
+		return nil
+	}
+	return matches[1:]
 }
 
 var _reCache = make(map[string]*regexp.Regexp)
@@ -532,6 +538,10 @@ func Substr(s string, n int, ms ...int) string {
 		m = len(s)
 	}
 
+	if n > m {
+		return ""
+	}
+
 	return s[n:m]
 }
 
@@ -549,9 +559,9 @@ func Sort(s interface{}, options ..._sortOption) (result []interface{}) {
 		case Reverse:
 			reverse = true
 		case ByValue:
-			_errorf("Sort option ByValue invalid")
+			_errorf("Sort option ByValue not valid")
 		default:
-			_errorf("Sort option %d invalid", option)
+			_errorf("Sort option %d valid", option)
 		}
 	}
 
@@ -609,7 +619,7 @@ func SortMap(m interface{}, options ..._sortOption) []KV {
 		case ByValue:
 			byValue = true
 		default:
-			_errorf("Sort option %d invalid", option)
+			_errorf("SortMap option %d not valid", option)
 		}
 	}
 
