@@ -15,10 +15,14 @@ TODO:
 */
 
 import (
+	"crypto/rand"
+	"crypto/sha1"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 )
@@ -94,13 +98,17 @@ func main() {
 	}
 
 	// Write source code to .go file
-	err = sourceTemplate.Execute(source, &templateParams{
-		FieldSep:  fieldSep,
-		Imports:   imports,
-		Begin:     begin,
-		PerRecord: perRecord,
-		End:       end,
-	})
+	params := &templateParams{
+		FieldSep:    fieldSep,
+		Imports:     imports,
+		BeginID:     randomID(),
+		Begin:       begin,
+		PerRecordID: randomID(),
+		PerRecord:   perRecord,
+		EndID:       randomID(),
+		End:         end,
+	}
+	err = sourceTemplate.Execute(source, params)
 	if err != nil {
 		errorf("error executing template: %v", err)
 	}
@@ -119,12 +127,15 @@ func main() {
 	exeFilename := filepath.Join(tempDir, "main")
 	cmd := exec.Command("go", "build", "-o", exeFilename, goFilename)
 	output, err := cmd.CombinedOutput()
-	switch err := err.(type) {
+	switch err.(type) {
 	case nil:
 	case *exec.ExitError:
-		// TODO: parse and prettify compile errors?
-		b, _ := os.ReadFile(goFilename)
-		fmt.Fprint(os.Stderr, string(b), "\n", string(output))
+		source, err := os.ReadFile(goFilename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error reading source file: %v", err)
+		}
+		parsed := parseErrors(string(output), string(source), params)
+		fmt.Fprint(os.Stderr, parsed)
 		os.Exit(1)
 	default:
 		errorf("error building program: %v", err)
@@ -143,6 +154,82 @@ func main() {
 		}
 		os.Exit(exitCode)
 	}
+}
+
+func randomID() string {
+	b := make([]byte, 20)
+	_, err := rand.Read(b)
+	if err != nil {
+		errorf("error generating random bytes: %v", err)
+	}
+	h := sha1.Sum(b)
+	return fmt.Sprintf("%x", h)
+}
+
+var compileErrorRe = regexp.MustCompile(`.*\.go:(\d+):(\d+): (.*)`)
+
+func parseErrors(buildOutput string, source string, params *templateParams) string {
+	var builder strings.Builder
+	lines := strings.Split(buildOutput, "\n")
+	for _, line := range lines {
+		if line == "" || strings.HasPrefix(line, "# ") {
+			continue
+		}
+		matches := compileErrorRe.FindStringSubmatch(line)
+		if matches == nil {
+			fmt.Fprintf(&builder, "%s\n", line)
+			continue
+		}
+		lineNum, _ := strconv.Atoi(matches[1])
+		colNum, _ := strconv.Atoi(matches[2])
+		message := matches[3]
+		builder.WriteString(formatError(source, params, lineNum, colNum, message))
+		builder.WriteString("\n")
+	}
+	return builder.String()
+}
+
+func formatError(source string, params *templateParams, line, col int, message string) string {
+	formatted := formatErrorChunk(source, params.BeginID, "begin", params.Begin, line, col, message)
+	if formatted != "" {
+		return formatted
+	}
+	formatted = formatErrorChunk(source, params.PerRecordID, "perrecord", params.PerRecord, line, col, message)
+	if formatted != "" {
+		return formatted
+	}
+	formatted = formatErrorChunk(source, params.EndID, "end", params.End, line, col, message)
+	if formatted != "" {
+		return formatted
+	}
+	return fmt.Sprintf("main.go:%d:%d: %s", line, col, message)
+}
+
+func formatErrorChunk(source, id, prefix string, chunk []string, line, col int, message string) string {
+	pos := strings.Index(source, id)
+	if pos < 0 {
+		return fmt.Sprintf("main.go:%d:%d: %s", line, col, message)
+	}
+	curLine := strings.Count(source[:pos], "\n") + 2
+	for i, block := range chunk {
+		numLines := strings.Count(block, "\n") + 1
+		if curLine+numLines > line {
+			relLine := line - curLine + 1
+			sourceLine := getSourceLine(block, relLine)
+			caretLine := strings.Repeat(" ", col-1) + "^"
+			return fmt.Sprintf("%s%d:%d:%d: %s\n%s\n%s", prefix, i+1, relLine, col, message, sourceLine, caretLine)
+		}
+		curLine += numLines
+	}
+	return ""
+}
+
+func getSourceLine(block string, line int) string {
+	lines := strings.Split(block, "\n")
+	if line < 1 || line > len(lines) {
+		return ""
+	}
+	return lines[line-1]
 }
 
 func errorf(format string, args ...interface{}) {
@@ -192,7 +279,7 @@ Examples: (TODO: test these)
 
   # Print frequencies of unique words in input
   prig -b 'freqs := map[string]int{}' \
-          'for i := 1; i <= NF(); i++ { freqs[Lower(F(i))]++ }' \
+          'for i := 1; i <= NF(); i++ { freqs[strings.ToLower(F(i))]++ }' \
        -e 'for k, v := range freqs { Println(k, v) }'
 `
 
@@ -206,11 +293,14 @@ var imports = map[string]struct{}{
 }
 
 type templateParams struct {
-	FieldSep  string
-	Imports   map[string]struct{}
-	Begin     []string
-	PerRecord []string
-	End       []string
+	FieldSep    string
+	Imports     map[string]struct{}
+	BeginID     string
+	Begin       []string
+	PerRecord   []string
+	PerRecordID string
+	End         []string
+	EndID       string
 }
 
 var sourceTemplate = template.Must(template.New("source").Parse(`
@@ -218,7 +308,7 @@ package main
 
 import (
 {{range $imp, $_ := .Imports}}
-{{printf "%q" $imp}}
+{{- printf "%q" $imp}}
 {{end}}
 )
 
@@ -233,8 +323,9 @@ func main() {
 	_output = bufio.NewWriter(os.Stdout)
 	defer _output.Flush()
 
+	// {{.BeginID -}}
 {{range .Begin}}
-{{.}}
+{{. -}}
 {{end}}
 
 {{if or .PerRecord .End}}
@@ -244,8 +335,9 @@ func main() {
         _nr++
         _fields = nil
 
+    // {{.PerRecordID -}}
 {{range .PerRecord}}
-{{.}}
+{{. -}}
 {{end}}
 	}
 	if _scanner.Err() != nil {
@@ -253,8 +345,9 @@ func main() {
 	}
 {{end}}
 
+    // {{.EndID -}}
 {{range .End}}
-{{.}}
+{{. -}}
 {{end}}
 }
 
@@ -373,14 +466,14 @@ func Substr(s string, n int, ms ...int) string {
 	case 1:
 		m = ms[0]
 	default:
-		_errorf("Substr() takes 2 or 3 arguments")
+		_errorf("Substr takes 2 or 3 arguments, not %d", len(ms)+2)
 	}
 
 	if n < 0 {
 		n = len(s) + n
-	}
-	if n < 0 {
-		n = 0
+		if n < 0 {
+			n = 0
+		}
 	}
 	if n > len(s) {
 		n = len(s)
@@ -388,9 +481,9 @@ func Substr(s string, n int, ms ...int) string {
 
 	if m < 0 {
 		m = len(s) + m
-	}
-	if m < 0 {
-		m = 0
+		if m < 0 {
+			m = 0
+		}
 	}
 	if m > len(s) {
 		m = len(s)
