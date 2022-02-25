@@ -1,12 +1,15 @@
 package main
 
 import (
+	"flag"
 	"os/exec"
 	"strings"
 	"testing"
 )
 
 // TODO: add TestMain to build ./prig?
+
+var goExe = flag.String("goexe", "", "set to override Go executable used by Prig")
 
 type test struct {
 	name string
@@ -328,7 +331,9 @@ func runTests(t *testing.T, tests []test) {
 		t.Run(test.name, func(t *testing.T) {
 			in := strings.NewReader(test.in)
 			args := []string{}
-			//			args := []string{"-g", "go1.18rc1"} // TODO: use go binary that called us
+			if *goExe != "" {
+				args = append(args, "-g", *goExe)
+			}
 			args = append(args, test.args...)
 			cmd := exec.Command("./prig", args...)
 			cmd.Stdin = in
