@@ -2,14 +2,29 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
 )
 
-// TODO: add TestMain to build ./prig?
-
 var goExe = flag.String("goexe", "", "set to override Go executable used by Prig")
+
+func TestMain(m *testing.M) {
+	flag.Parse()
+	buildExe := *goExe
+	if buildExe == "" {
+		buildExe = "go"
+	}
+	cmd := exec.Command(buildExe, "build")
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("error building Prig: %v", err)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
 
 type test struct {
 	name string
