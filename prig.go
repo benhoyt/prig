@@ -5,7 +5,6 @@ Based on a similar idea for Nim:
 https://github.com/c-blake/cligen/blob/master/examples/rp.nim
 
 TODO:
-- Add sort helpers to sort slices and map keys/values?
 - Add note about which packages are auto-imported? import math, strings, etc
   + or consider using goimports to do this automatically? test performance hit
 
@@ -30,7 +29,7 @@ const version = "v0.1.0"
 func main() {
 	// Parse command line arguments
 	if len(os.Args) <= 1 {
-		errorf(usage)
+		errorf("%s", usage)
 	}
 
 	var begin []string
@@ -269,32 +268,39 @@ Built-in functions:
   NF() int                // return number of fields in current record
   NR() int                // return number of current record
 
-  Replace(re, s, repl string) string  // replace all re matches in s with repl
-  Match(re, s string) bool            // report whether s contains match of re
-  Submatches(re, s string) []string   // return slice of submatches of re in s
-  Substr(s string, n[, m] int) string // s[n:m] but safe and allow negative n/m
-
   Print(args ...interface{})                 // fmt.Print, but buffered
   Printf(format string, args ...interface{}) // fmt.Printf, but buffered
   Println(args ...interface{})               // fmt.Println, but buffered
 
-Examples: (TODO: test these)
+  Match(re, s string) bool            // report whether s contains match of re
+  Replace(re, s, repl string) string  // replace all re matches in s with repl
+  Submatches(re, s string) []string   // return slice of submatches of re in s
+  Substr(s string, n[, m] int) string // s[n:m] but safe and allow negative n/m
+
+  SortInts(s []int[, options]) []int               // return new sorted slice
+    // also SortFloats, SortStrings; options are Reverse
+  SortMapInts(m map[string]int[, options]) []KVInt // return sorted map items
+    // also SortMapFloats, SortMapStrings; options are Reverse, ByValue
+
+Examples: (TODO: test these -- make them tests?)
   # Say hi to the world
   prig -b 'Println("Hello, world!")'
 
   # Print 5th field in milliseconds if record contains "GET" or "HEAD"
   prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, F(0)) { Printf("%.0fms\n", Float(F(5))*1000) }'
 
-  # Print frequencies of unique words in input
+  # Print frequencies of unique words, most frequent first
   prig -b 'freqs := map[string]int{}' \
-          'for i := 1; i <= NF(); i++ { freqs[strings.ToLower(F(i))]++ }' \
-       -e 'for k, v := range freqs { Println(k, v) }'`
+       'for i := 1; i <= NF(); i++ { freqs[strings.ToLower(F(i))]++ }' \
+       -e 'for _, f := range SortMapInt(freqs, ByValue, Reverse) { ' \
+       -e 'Println(f.K, f.V) }'`
 
 var imports = map[string]struct{}{
 	"bufio":   {},
 	"fmt":     {},
 	"os":      {},
 	"regexp":  {},
+	"sort":    {},
 	"strconv": {},
 	"strings": {},
 }
@@ -498,6 +504,158 @@ func Substr(s string, n int, ms ...int) string {
 	}
 
 	return s[n:m]
+}
+
+type _sortOption int
+
+const (
+	Reverse _sortOption = iota
+	ByValue
+)
+
+func _getSortOptions(options []_sortOption, funcName string) (reverse bool) {
+	for _, option := range options {
+		switch option {
+		case Reverse:
+			reverse = true
+		case ByValue:
+			_errorf("invalid %s option ByValue", funcName)
+		default:
+			_errorf("invalid %s option %d", funcName, option)
+		}
+	}
+	return reverse
+}
+
+func SortInts(s []int, options ..._sortOption) []int {
+	reverse := _getSortOptions(options, "SortInts")
+	cp := make([]int, len(s))
+	copy(cp, s)
+	sort.Ints(cp)
+	if reverse {
+		for i, j := 0, len(cp)-1; i < len(cp)/2; i, j = i+1, j-1 {
+			tmp := cp[i]
+			cp[i] = cp[j]
+			cp[j] = tmp
+		}
+	}
+	return cp
+}
+
+func SortFloats(s []float64, options ..._sortOption) []float64 {
+	reverse := _getSortOptions(options, "SortFloats")
+	cp := make([]float64, len(s))
+	copy(cp, s)
+	sort.Float64s(cp)
+	if reverse {
+		for i, j := 0, len(cp)-1; i < len(cp)/2; i, j = i+1, j-1 {
+			tmp := cp[i]
+			cp[i] = cp[j]
+			cp[j] = tmp
+		}
+	}
+	return cp
+}
+
+func SortStrings(s []string, options ..._sortOption) []string {
+	reverse := _getSortOptions(options, "SortStrings")
+	cp := make([]string, len(s))
+	copy(cp, s)
+	sort.Strings(cp)
+	if reverse {
+		for i, j := 0, len(cp)-1; i < len(cp)/2; i, j = i+1, j-1 {
+			tmp := cp[i]
+			cp[i] = cp[j]
+			cp[j] = tmp
+		}
+	}
+	return cp
+}
+
+type KVInt struct {
+	K string
+	V int
+}
+
+type KVFloat struct {
+	K string
+	V float64
+}
+
+type KVString struct {
+	K string
+	V string
+}
+
+func _getSortMapOptions(options []_sortOption, funcName string) (reverse, byValue bool) {
+	for _, option := range options {
+		switch option {
+		case Reverse:
+			reverse = true
+		case ByValue:
+			byValue = true
+		default:
+			_errorf("invalid %s option %d", funcName, option)
+		}
+	}
+	return reverse, byValue
+}
+
+func SortMapInts(m map[string]int, options ..._sortOption) []KVInt {
+	reverse, byValue := _getSortMapOptions(options, "SortMapInts")
+	kvs := make([]KVInt, 0, len(m))
+	for k, v := range m {
+		kvs = append(kvs, KVInt{k, v})
+	}
+	switch {
+	case !reverse && !byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K < kvs[j].K })
+	case !reverse && byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V < kvs[j].V })
+	case reverse && !byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K > kvs[j].K })
+	case reverse && byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V > kvs[j].V })
+	}
+	return kvs
+}
+
+func SortMapFloats(m map[string]float64, options ..._sortOption) []KVFloat {
+	reverse, byValue := _getSortMapOptions(options, "SortMapFloats")
+	kvs := make([]KVFloat, 0, len(m))
+	for k, v := range m {
+		kvs = append(kvs, KVFloat{k, v})
+	}
+	switch {
+	case !reverse && !byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K < kvs[j].K })
+	case !reverse && byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V < kvs[j].V })
+	case reverse && !byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K > kvs[j].K })
+	case reverse && byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V > kvs[j].V })
+	}
+	return kvs
+}
+
+func SortMapStrings(m map[string]string, options ..._sortOption) []KVString {
+	reverse, byValue := _getSortMapOptions(options, "SortMapStrings")
+	kvs := make([]KVString, 0, len(m))
+	for k, v := range m {
+		kvs = append(kvs, KVString{k, v})
+	}
+	switch {
+	case !reverse && !byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K < kvs[j].K })
+	case !reverse && byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V < kvs[j].V })
+	case reverse && !byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K > kvs[j].K })
+	case reverse && byValue:
+		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V > kvs[j].V })
+	}
+	return kvs
 }
 
 func _errorf(format string, args ...interface{}) {
