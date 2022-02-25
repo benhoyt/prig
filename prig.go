@@ -5,6 +5,11 @@ Based on a similar idea for Nim:
 https://github.com/c-blake/cligen/blob/master/examples/rp.nim
 
 TODO:
+- Consider making this a Go 1.18 showcase with Sort / SortMap
+  + make it work with 1.17 but add optional Sort[T] and SortMap[T] with Go 1.18
+  + or maybe make it use interface{} in Go 1.17 but type safe in Go 1.18
+    - Sort(s interface{}) []interface{}
+    - SortMap(m interface{}) []KV
 - Add note about which packages are auto-imported? import math, strings, etc
   + or consider using goimports to do this automatically? test performance hit
 
@@ -282,18 +287,28 @@ Built-in functions:
   SortMapInts(m map[string]int[, options]) []KVInt // return sorted map items
     // also SortMapFloats, SortMapStrings; options are Reverse, ByValue
 
-Examples: (TODO: test these -- make them tests?)
-  # Say hi to the world
-  prig -b 'Println("Hello, world!")'
+Examples:
+  # Say hello to the world
+  ` + exampleHelloWorld + `
 
-  # Print 5th field in milliseconds if record contains "GET" or "HEAD"
-  prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, F(0)) { Printf("%.0fms\n", Float(F(5))*1000) }'
+  # Print the average value of the last field
+  ` + exampleAverage + `
+
+  # Print 3rd field in milliseconds if record contains "GET" or "HEAD"
+  ` + exampleMilliseconds + `
 
   # Print frequencies of unique words, most frequent first
-  prig -b 'freqs := map[string]int{}' \
+  ` + exampleFrequencies
+
+const (
+	exampleHelloWorld   = `prig -b 'Println("Hello, world!")'`
+	exampleAverage      = `prig -b 's := 0.0' 's += Float(F(NF()))' -e 'Println(s / float64(NR()))'`
+	exampleMilliseconds = `prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, F(0)) { Printf("%.0fms\n", Float(F(3))*1000) }'`
+	exampleFrequencies  = `prig -b 'freqs := map[string]int{}' \
        'for i := 1; i <= NF(); i++ { freqs[strings.ToLower(F(i))]++ }' \
-       -e 'for _, f := range SortMapInt(freqs, ByValue, Reverse) { ' \
+       -e 'for _, f := range SortMapInts(freqs, ByValue, Reverse) { ' \
        -e 'Println(f.K, f.V) }'`
+)
 
 var imports = map[string]struct{}{
 	"bufio":   {},
@@ -607,15 +622,27 @@ func SortMapInts(m map[string]int, options ..._sortOption) []KVInt {
 	for k, v := range m {
 		kvs = append(kvs, KVInt{k, v})
 	}
-	switch {
-	case !reverse && !byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K < kvs[j].K })
-	case !reverse && byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V < kvs[j].V })
-	case reverse && !byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K > kvs[j].K })
-	case reverse && byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V > kvs[j].V })
+	if byValue {
+		sort.Slice(kvs, func (i, j int) bool {
+			if kvs[i].V == kvs[j].V {
+				return kvs[i].K < kvs[j].K
+			}
+			return kvs[i].V < kvs[j].V
+		})
+	} else {
+		sort.Slice(kvs, func (i, j int) bool {
+			if kvs[i].K == kvs[j].K {
+				return kvs[i].V < kvs[j].V
+			}
+			return kvs[i].K < kvs[j].K
+		})
+	}
+	if reverse {
+		for i, j := 0, len(kvs)-1; i < len(kvs)/2; i, j = i+1, j-1 {
+			tmp := kvs[i]
+			kvs[i] = kvs[j]
+			kvs[j] = tmp
+		}
 	}
 	return kvs
 }
@@ -626,15 +653,27 @@ func SortMapFloats(m map[string]float64, options ..._sortOption) []KVFloat {
 	for k, v := range m {
 		kvs = append(kvs, KVFloat{k, v})
 	}
-	switch {
-	case !reverse && !byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K < kvs[j].K })
-	case !reverse && byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V < kvs[j].V })
-	case reverse && !byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K > kvs[j].K })
-	case reverse && byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V > kvs[j].V })
+	if byValue {
+		sort.Slice(kvs, func (i, j int) bool {
+			if kvs[i].V == kvs[j].V {
+				return kvs[i].K < kvs[j].K
+			}
+			return kvs[i].V < kvs[j].V
+		})
+	} else {
+		sort.Slice(kvs, func (i, j int) bool {
+			if kvs[i].K == kvs[j].K {
+				return kvs[i].V < kvs[j].V
+			}
+			return kvs[i].K < kvs[j].K
+		})
+	}
+	if reverse {
+		for i, j := 0, len(kvs)-1; i < len(kvs)/2; i, j = i+1, j-1 {
+			tmp := kvs[i]
+			kvs[i] = kvs[j]
+			kvs[j] = tmp
+		}
 	}
 	return kvs
 }
@@ -645,15 +684,27 @@ func SortMapStrings(m map[string]string, options ..._sortOption) []KVString {
 	for k, v := range m {
 		kvs = append(kvs, KVString{k, v})
 	}
-	switch {
-	case !reverse && !byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K < kvs[j].K })
-	case !reverse && byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V < kvs[j].V })
-	case reverse && !byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].K > kvs[j].K })
-	case reverse && byValue:
-		sort.Slice(kvs, func (i, j int) bool { return kvs[i].V > kvs[j].V })
+	if byValue {
+		sort.Slice(kvs, func (i, j int) bool {
+			if kvs[i].V == kvs[j].V {
+				return kvs[i].K < kvs[j].K
+			}
+			return kvs[i].V < kvs[j].V
+		})
+	} else {
+		sort.Slice(kvs, func (i, j int) bool {
+			if kvs[i].K == kvs[j].K {
+				return kvs[i].V < kvs[j].V
+			}
+			return kvs[i].K < kvs[j].K
+		})
+	}
+	if reverse {
+		for i, j := 0, len(kvs)-1; i < len(kvs)/2; i, j = i+1, j-1 {
+			tmp := kvs[i]
+			kvs[i] = kvs[j]
+			kvs[j] = tmp
+		}
 	}
 	return kvs
 }
