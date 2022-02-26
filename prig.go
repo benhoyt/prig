@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"text/template"
@@ -162,6 +163,9 @@ func main() {
 
 	// Build the program with "go build"
 	exeFilename := filepath.Join(tempDir, "main")
+	if runtime.GOOS == "windows" {
+		exeFilename += ".exe"
+	}
 	cmd = exec.Command(goExe, "build", "-o", exeFilename, goFilename)
 	output, err = cmd.CombinedOutput()
 	switch err.(type) {
