@@ -1,14 +1,14 @@
 
 # Prig: the snobbish AWK
 
-Prig is for Processing Records In Go. It's like AWK, but snobbish (Go! static typing!). It's also faster, and if you know Go, you don't need to learn AWK.
+Prig is for **P**rocessing **R**ecords **I**n **G**o. It's like AWK, but snobbish (Go! static typing!). It's also faster, and if you know Go, you don't need to learn AWK.
 
-You can also read my article on [**why and how I wrote Prig**](https://benhoyt.com/writings/prig/). The tl;dr is "no good reason". :-)
+You can also read my article on [**why and how I wrote Prig**](https://benhoyt.com/writings/prig/). The tl;dr is "no good reason, I'm a geek!" :-)
 
 
 ## How to use Prig
 
-To install `prig`, type `go install github.com/benhoyt/prig@latest` (TODO: test). Prig itself runs the code using `go build`, so even if you have a `prig` binary it requires the Go compiler to be [installed](https://go.dev/doc/install).
+To install `prig`, make sure Go is [installed](https://go.dev/doc/install) and then type `go install github.com/benhoyt/prig@latest`. Prig itself runs the generated code using `go build`, so even once you have a `prig` executable it requires the Go compiler to be installed.
 
 As a simple example, you can try this script which prints a modified version of the second field for each line of input (the full URL in this example):
 
@@ -90,6 +90,6 @@ Prig uses the [golang.org/x/tools/imports](https://golang.org/x/tools/imports) p
 
 If you want a real, POSIX-compatible version of AWK for use in Go programs, see my [GoAWK](https://github.com/benhoyt/goawk) project.
 
-Prig was based on [rp](https://github.com/c-blake/cligen/blob/master/examples/rp.nim), a similar idea for Nim written by TODO.
+Prig was based on [rp](https://github.com/c-blake/cligen/blob/master/examples/rp.nim), a similar idea for Nim written by [c-blake](https://github.com/c-blake).
 
 Prig is licensed under an open source [MIT license](https://github.com/benhoyt/prig/blob/master/LICENSE.txt).
