@@ -248,11 +248,12 @@ Options:
   -V, --version    print version number and exit
 
 Built-in functions:
-  F(i int) string         // return field i (starts at 1; 0 is current record)
-  Float(s string) float64 // convert string to float64 (or return 0.0)
-  Int(s string) int       // convert string to int (or return 0)
-  NF() int                // return number of fields in current record
-  NR() int                // return number of current record
+  F(i int) float64 // return field i as float64, int, or string
+  I(i int) int     // (i==0 is entire record, i==1 is first field)
+  S(i int) string
+
+  NF() int // return number of fields in current record
+  NR() int // return number of current record
 
   Print(args ...any)                 // fmt.Print, but buffered
   Printf(format string, args ...any) // fmt.Printf, but buffered
@@ -285,10 +286,10 @@ Examples:
 // These are tested in prig_test.go to ensure we're testing our examples.
 const (
 	exampleHelloWorld   = `prig -b 'Println("Hello, world!", math.Pi)'`
-	exampleAverage      = `prig -b 's := 0.0' 's += Float(F(NF()))' -e 'Println(s / float64(NR()))'`
-	exampleMilliseconds = `prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, F(0)) { Printf("%.0fms\n", Float(F(3))*1000) }'`
+	exampleAverage      = `prig -b 's := 0.0' 's += F(NF())' -e 'Println(s / float64(NR()))'`
+	exampleMilliseconds = `prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, S(0)) { Printf("%.0fms\n", F(3)*1000) }'`
 	exampleFrequencies  = `prig -b 'freqs := map[string]int{}' \
-       'for i := 1; i <= NF(); i++ { freqs[strings.ToLower(F(i))]++ }' \
+       'for i := 1; i <= NF(); i++ { freqs[strings.ToLower(S(i))]++ }' \
        -e 'for _, f := range SortMap(freqs, ByValue, Reverse) { ' \
        -e 'Println(f.K, f.V) }'`
 )
@@ -385,7 +386,7 @@ func NR() int {
 	return _nr
 }
 
-func F(i int) string {
+func S(i int) string {
 	if i == 0 {
 		return _record
 	}
@@ -396,15 +397,18 @@ func F(i int) string {
     return _fields[i-1]
 }
 
-func Int(s string) int {
+func I(i int) int {
+	s := S(i)
 	n, err := strconv.Atoi(s)
 	if err != nil {
-		return int(Float(s))
+		f, _ := strconv.ParseFloat(s, 64)
+		return int(f)
 	}
 	return n
 }
 
-func Float(s string) float64 {
+func F(i int) float64 {
+	s := S(i)
 	f, _ := strconv.ParseFloat(s, 64)
 	return f
 }

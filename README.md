@@ -17,10 +17,10 @@ $ cat logs.txt
 GET /robots.txt HTTP/1.1
 HEAD /README.md HTTP/1.1
 GET /wp-admin/ HTTP/1.0
-$ prig 'Println("https://mysite.com" + F(2))' <logs.txt
-https://mysite.com/robots.txt
-https://mysite.com/README.md
-https://mysite.com/wp-admin/
+$ prig 'Println("https://example.com" + S(2))' <logs.txt
+https://example.com/robots.txt
+https://example.com/README.md
+https://example.com/wp-admin/
 ```
 
 To get help, run `prig` without any arguments or with the `-h` argument. Help output is copied below:
@@ -44,11 +44,12 @@ Options:
   -V, --version    print version number and exit
 
 Built-in functions:
-  F(i int) string         // return field i (starts at 1; 0 is current record)
-  Float(s string) float64 // convert string to float64 (or return 0.0)
-  Int(s string) int       // convert string to int (or return 0)
-  NF() int                // return number of fields in current record
-  NR() int                // return number of current record
+  F(i int) float64 // return field i as float64, int, or string
+  I(i int) int     // (i==0 is entire record, i==1 is first field)
+  S(i int) string
+
+  NF() int // return number of fields in current record
+  NR() int // return number of current record
 
   Print(args ...any)                 // fmt.Print, but buffered
   Printf(format string, args ...any) // fmt.Printf, but buffered
@@ -70,14 +71,14 @@ Examples:
   prig -b 'Println("Hello, world!", math.Pi)'
 
   # Print the average value of the last field
-  prig -b 's := 0.0' 's += Float(F(NF()))' -e 'Println(s / float64(NR()))'
+  prig -b 's := 0.0' 's += F(NF())' -e 'Println(s / float64(NR()))'
 
   # Print 3rd field in milliseconds if line contains "GET" or "HEAD"
-  prig 'if Match(`GET|HEAD`, F(0)) { Printf("%.0fms\n", Float(F(3))*1000) }'
+  prig 'if Match(`GET|HEAD`, S(0)) { Printf("%.0fms\n", F(3)*1000) }'
 
   # Print frequencies of unique words, most frequent first
   prig -b 'freqs := map[string]int{}' \
-       'for i := 1; i <= NF(); i++ { freqs[strings.ToLower(F(i))]++ }' \
+       'for i := 1; i <= NF(); i++ { freqs[strings.ToLower(S(i))]++ }' \
        -e 'for _, f := range SortMap(freqs, ByValue, Reverse) { ' \
        -e 'Println(f.K, f.V) }'
 ```
