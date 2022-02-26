@@ -52,9 +52,9 @@ Built-in functions:
   NF() int // return number of fields in current record
   NR() int // return number of current record
 
-  Print(args ...any)                 // fmt.Print, but buffered
-  Printf(format string, args ...any) // fmt.Printf, but buffered
-  Println(args ...any)               // fmt.Println, but buffered
+  Print(args ...interface{})                 // fmt.Print, but buffered
+  Printf(format string, args ...interface{}) // fmt.Printf, but buffered
+  Println(args ...interface{})               // fmt.Println, but buffered
 
   Match(re, s string) bool            // report whether s contains match of re
   Replace(re, s, repl string) string  // replace all re matches in s with repl

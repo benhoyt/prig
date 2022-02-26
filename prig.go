@@ -259,9 +259,9 @@ Built-in functions:
   NF() int // return number of fields in current record
   NR() int // return number of current record
 
-  Print(args ...any)                 // fmt.Print, but buffered
-  Printf(format string, args ...any) // fmt.Printf, but buffered
-  Println(args ...any)               // fmt.Println, but buffered
+  Print(args ...interface{})                 // fmt.Print, but buffered
+  Printf(format string, args ...interface{}) // fmt.Printf, but buffered
+  Println(args ...interface{})               // fmt.Println, but buffered
 
   Match(re, s string) bool            // report whether s contains match of re
   Replace(re, s, repl string) string  // replace all re matches in s with repl
@@ -327,8 +327,6 @@ import (
 {{end -}}
 )
 
-type any = interface{} // for Go 1.17 and below
-
 var (
 	_output *bufio.Writer
 	_record string
@@ -365,21 +363,21 @@ func main() {
 {{end}}
 }
 
-func Print(args ...any) {
+func Print(args ...interface{}) {
 	_, err := fmt.Fprint(_output, args...)
 	if err != nil {
 		_errorf("error writing output: %v", err)
 	}
 }
 
-func Printf(format string, args ...any) {
+func Printf(format string, args ...interface{}) {
 	_, err := fmt.Fprintf(_output, format, args...)
 	if err != nil {
 		_errorf("error writing output: %v", err)
 	}
 }
 
-func Println(args ...any) {
+func Println(args ...interface{}) {
 	_, err := fmt.Fprintln(_output, args...)
 	if err != nil {
 		_errorf("error writing output: %v", err)
@@ -557,7 +555,7 @@ func _getSortMapOptions(options ..._sortOption) (reverse, byValue bool) {
 
 {{.SortFuncs}}
 
-func _errorf(format string, args ...any) {
+func _errorf(format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
 }
@@ -624,16 +622,16 @@ func SortMap[T int|float64|string](m map[string]T, options ..._sortOption) []KV[
 `
 
 const sortNonGeneric = `
-func Sort(s any, options ..._sortOption) []any {
+func Sort(s interface{}, options ..._sortOption) []interface{} {
 	reverse := _getSortOptions(options...)
 
-	var result []any
+	var result []interface{}
 	switch s := s.(type) {
 	case []int:
 		cp := make([]int, len(s))
 		copy(cp, s)
 		sort.Ints(cp)
-		result = make([]any, len(s))
+		result = make([]interface{}, len(s))
 		for i, x := range cp {
 			result[i] = x
 		}
@@ -641,7 +639,7 @@ func Sort(s any, options ..._sortOption) []any {
 		cp := make([]float64, len(s))
 		copy(cp, s)
 		sort.Float64s(cp)
-		result = make([]any, len(s))
+		result = make([]interface{}, len(s))
 		for i, x := range cp {
 			result[i] = x
 		}
@@ -649,7 +647,7 @@ func Sort(s any, options ..._sortOption) []any {
 		cp := make([]string, len(s))
 		copy(cp, s)
 		sort.Strings(cp)
-		result = make([]any, len(s))
+		result = make([]interface{}, len(s))
 		for i, x := range cp {
 			result[i] = x
 		}
@@ -669,10 +667,10 @@ func Sort(s any, options ..._sortOption) []any {
 
 type KV struct {
 	K string
-	V any
+	V interface{}
 }
 
-func SortMap(m any, options ..._sortOption) []KV {
+func SortMap(m interface{}, options ..._sortOption) []KV {
 	reverse, byValue := _getSortMapOptions(options...)
 
 	var kvs []KV
