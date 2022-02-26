@@ -3,7 +3,7 @@
 
 Prig is for Processing Records In Go. It's like AWK, but snobbish (Go! static typing!). It's also faster, and if you know Go, you don't need to learn AWK.
 
-You can also read my [**article on why and how I wrote Prig**](https://benhoyt.com/writings/prig/). The tl;dr is "no good reason". :-)
+You can also read my article on [**why and how I wrote Prig**](https://benhoyt.com/writings/prig/). The tl;dr is "no good reason". :-)
 
 
 ## How to use Prig
@@ -23,7 +23,7 @@ https://example.com/README.md
 https://example.com/wp-admin/
 ```
 
-To get help, run `prig` without any arguments or with the `-h` argument. Help output is copied below:
+To get help, run `prig` without any arguments or with the `-h` argument. Help output is copied below (this shows more examples as well):
 
 ```
 Prig v1.0.0 - Copyright (c) 2022 Ben Hoyt
