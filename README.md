@@ -1,7 +1,7 @@
 
 # Prig: the snobbish AWK
 
-Prig is for **P**rocessing **R**ecords **I**n **G**o. It's like AWK, but snobbish (Go! static typing!). It's also faster, and if you know Go, you don't need to learn AWK.
+Prig is for **P**rocessing **R**ecords **I**n **G**o. It's like AWK, but snobbish (Go! static typing!). It's also faster to execute, and if you know Go, you don't need to learn AWK.
 
 You can also read my article on [**why and how I wrote Prig**](https://benhoyt.com/writings/prig/). The tl;dr is "no good reason, I'm a geek!" :-)
 
@@ -10,20 +10,21 @@ You can also read my article on [**why and how I wrote Prig**](https://benhoyt.c
 
 To install `prig`, make sure Go is [installed](https://go.dev/doc/install) and then type `go install github.com/benhoyt/prig@latest`. Prig itself runs the generated code using `go build`, so even once you have a `prig` executable it requires the Go compiler to be installed.
 
-As a simple example, you can try this script which prints a modified version of the second field for each line of input (the full URL in this example):
+As a simple example, you can try the following script. It prints a modified version of the second field of each line of input (the full URL in this example):
 
 ```
 $ cat logs.txt
 GET /robots.txt HTTP/1.1
 HEAD /README.md HTTP/1.1
 GET /wp-admin/ HTTP/1.0
+
 $ prig 'Println("https://example.com" + S(2))' <logs.txt
 https://example.com/robots.txt
 https://example.com/README.md
 https://example.com/wp-admin/
 ```
 
-To get help, run `prig` without any arguments or with the `-h` argument. Help output is copied below (this shows more examples as well):
+To get help, run `prig` with a `-h` or `--help` argument. Help output is copied below, showing more examples at the bottom:
 
 ```
 Prig v1.0.0 - Copyright (c) 2022 Ben Hoyt
@@ -83,12 +84,12 @@ Examples:
        -e 'Println(f.K, f.V) }'
 ```
 
-Prig uses the [golang.org/x/tools/imports](https://golang.org/x/tools/imports) package, so imports are usually automatic (use `-i` if you need to override). And that's really all you need to know -- all the code is pure, ordinary Go.
+Prig uses the [golang.org/x/tools/imports](https://golang.org/x/tools/imports) package, so imports are usually automatic (use `-i` if you need to disambiguate, for example between `text/template` and `html/template`). And that's really all you need to know -- the code snippets are pure Go.
 
 
-## Other info
+## Other information
 
-If you want a real, POSIX-compatible version of AWK for use in Go programs, see my [GoAWK](https://github.com/benhoyt/goawk) project.
+If you're looking for a real, POSIX-compatible version of AWK for use in Go programs, see my [GoAWK](https://github.com/benhoyt/goawk) project.
 
 Prig was based on [rp](https://github.com/c-blake/cligen/blob/master/examples/rp.nim), a similar idea for Nim written by [c-blake](https://github.com/c-blake).
 
