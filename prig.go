@@ -23,7 +23,7 @@ import (
 	importspkg "golang.org/x/tools/imports"
 )
 
-const version = "v0.1.0"
+const version = "v1.0.0"
 
 var goVersionRegex = regexp.MustCompile(`^go version go1.(\d+)`)
 
@@ -232,24 +232,20 @@ func errorf(format string, args ...interface{}) {
 
 const usage = `Prig ` + version + ` - Copyright (c) 2022 Ben Hoyt
 
+Usage: prig [options] [-b 'begin code'] 'per-record code' [-e 'end code']
+
 Prig is for Processing Records In Go. It's like AWK, but snobbish (Go! static
 typing!). It runs 'begin code' first, then runs 'per-record code' for every
 record (line) in the input, then runs 'end code'. Prig uses "go build", so it
 requires the Go compiler: https://go.dev/doc/install
 
-Usage: prig [options] [-b 'begin code'] 'per-record code' [-e 'end code']
-
 Options:
-  -b 'begin code'    Go code to run before processing input (multiple allowed)
-  'per-record code'  Go code to run for every record of input; F(0) is record
-  -e 'end code'      Go code to run after processing input (multiple allowed)
-
-  -F char | re       field separator (single character or multi-char regex)
-  -g executable      Go compiler to use (eg: "go1.18rc1", default "go")
-  -h, --help         print help message and exit
-  -i import          import Go package (only needed to disambiguate imports)
-  -s                 print formatted Go source instead of running
-  -V, --version      print version number and exit
+  -F char | re     field separator (single character or multi-char regex)
+  -g executable    Go compiler to use (eg: "go1.18rc1", default "go")
+  -h, --help       print help message and exit
+  -i import        import Go package (normally automatic)
+  -s               print formatted Go source instead of running
+  -V, --version    print version number and exit
 
 Built-in functions:
   F(i int) string         // return field i (starts at 1; 0 is current record)
@@ -258,35 +254,37 @@ Built-in functions:
   NF() int                // return number of fields in current record
   NR() int                // return number of current record
 
-  Print(args ...interface{})                 // fmt.Print, but buffered
-  Printf(format string, args ...interface{}) // fmt.Printf, but buffered
-  Println(args ...interface{})               // fmt.Println, but buffered
+  Print(args ...any)                 // fmt.Print, but buffered
+  Printf(format string, args ...any) // fmt.Printf, but buffered
+  Println(args ...any)               // fmt.Println, but buffered
 
   Match(re, s string) bool            // report whether s contains match of re
   Replace(re, s, repl string) string  // replace all re matches in s with repl
   Submatches(re, s string) []string   // return slice of submatches of re in s
   Substr(s string, n[, m] int) string // s[n:m] but safe and allow negative n/m
 
-  Sort(s []T) []T // return new sorted slice (T is int, float64, string)
-    // also Sort(s, Reverse) to sort descending
-  SortMap(m map[string]T) []KV // return sorted slice of key-value pairs
-    // also Sort(s[, ByValue][, Reverse]) to sort by value or descending
+  Sort[T int|float64|string](s []T) []T
+    // return new sorted slice; also Sort(s, Reverse) to sort descending
+  SortMap[T int|float64|string](m map[string]T) []KV[T]
+    // return sorted slice of key-value pairs
+    // also Sort(s[, Reverse][, ByValue]) to sort descending or by value
 
 Examples:
-  # Say hi to the world
+  # Run an arbitrary Go snippet; don't process input
   ` + exampleHelloWorld + `
 
   # Print the average value of the last field
   ` + exampleAverage + `
 
-  # Print 3rd field in milliseconds if record contains "GET" or "HEAD"
+  # Print 3rd field in milliseconds if line contains "GET" or "HEAD"
   ` + exampleMilliseconds + `
 
   # Print frequencies of unique words, most frequent first
   ` + exampleFrequencies
 
+// These are tested in prig_test.go to ensure we're testing our examples.
 const (
-	exampleHelloWorld   = `prig -b 'Println("Hello, world!")'`
+	exampleHelloWorld   = `prig -b 'Println("Hello, world!", math.Pi)'`
 	exampleAverage      = `prig -b 's := 0.0' 's += Float(F(NF()))' -e 'Println(s / float64(NR()))'`
 	exampleMilliseconds = `prig 'if Match(` + "`" + `GET|HEAD` + "`" + `, F(0)) { Printf("%.0fms\n", Float(F(3))*1000) }'`
 	exampleFrequencies  = `prig -b 'freqs := map[string]int{}' \
@@ -324,6 +322,8 @@ import (
 {{end -}}
 )
 
+type any = interface{} // for Go 1.17 and below
+
 var (
 	_output *bufio.Writer
 	_record string
@@ -360,21 +360,21 @@ func main() {
 {{end}}
 }
 
-func Print(args ...interface{}) {
+func Print(args ...any) {
 	_, err := fmt.Fprint(_output, args...)
 	if err != nil {
 		_errorf("error writing output: %v", err)
 	}
 }
 
-func Printf(format string, args ...interface{}) {
+func Printf(format string, args ...any) {
 	_, err := fmt.Fprintf(_output, format, args...)
 	if err != nil {
 		_errorf("error writing output: %v", err)
 	}
 }
 
-func Println(args ...interface{}) {
+func Println(args ...any) {
 	_, err := fmt.Fprintln(_output, args...)
 	if err != nil {
 		_errorf("error writing output: %v", err)
@@ -549,18 +549,18 @@ func _getSortMapOptions(options ..._sortOption) (reverse, byValue bool) {
 
 {{.SortFuncs}}
 
-func _errorf(format string, args ...interface{}) {
+func _errorf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
 }
 `))
 
 const sortGeneric = `
-func Sort[T int|float64|string](s []T, options ..._sortOption) (result []T) {
+func Sort[T int|float64|string](s []T, options ..._sortOption) []T {
 	reverse := _getSortOptions(options...)
 
 	// TODO: probably could be improved when slices package arrives
-	result = make([]T, len(s))
+	result := make([]T, len(s))
 	copy(result, s)
 	if reverse {
 		sort.Slice(result, func(i, j int) bool {
@@ -616,15 +616,16 @@ func SortMap[T int|float64|string](m map[string]T, options ..._sortOption) []KV[
 `
 
 const sortNonGeneric = `
-func Sort(s interface{}, options ..._sortOption) (result []interface{}) {
+func Sort(s any, options ..._sortOption) []any {
 	reverse := _getSortOptions(options...)
 
+	var result []any
 	switch s := s.(type) {
 	case []int:
 		cp := make([]int, len(s))
 		copy(cp, s)
 		sort.Ints(cp)
-		result = make([]interface{}, len(s))
+		result = make([]any, len(s))
 		for i, x := range cp {
 			result[i] = x
 		}
@@ -632,7 +633,7 @@ func Sort(s interface{}, options ..._sortOption) (result []interface{}) {
 		cp := make([]float64, len(s))
 		copy(cp, s)
 		sort.Float64s(cp)
-		result = make([]interface{}, len(s))
+		result = make([]any, len(s))
 		for i, x := range cp {
 			result[i] = x
 		}
@@ -640,7 +641,7 @@ func Sort(s interface{}, options ..._sortOption) (result []interface{}) {
 		cp := make([]string, len(s))
 		copy(cp, s)
 		sort.Strings(cp)
-		result = make([]interface{}, len(s))
+		result = make([]any, len(s))
 		for i, x := range cp {
 			result[i] = x
 		}
@@ -660,10 +661,10 @@ func Sort(s interface{}, options ..._sortOption) (result []interface{}) {
 
 type KV struct {
 	K string
-	V interface{}
+	V any
 }
 
-func SortMap(m interface{}, options ..._sortOption) []KV {
+func SortMap(m any, options ..._sortOption) []KV {
 	reverse, byValue := _getSortMapOptions(options...)
 
 	var kvs []KV

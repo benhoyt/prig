@@ -1,3 +1,5 @@
+// Tests for Prig.
+
 package main
 
 import (
@@ -39,6 +41,11 @@ var prigTests = []test{
 		name: "single begin",
 		args: []string{`-b`, `Println("Hello, world")`},
 		out:  "Hello, world\n",
+	},
+	{
+		name: "error exit",
+		args: []string{`-b`, `fmt.Fprintf(os.Stderr, "ERROR!")`, `-b`, `os.Exit(1)`},
+		err:  "ERROR!",
 	},
 	{
 		name: "per-record with if clause",
@@ -359,7 +366,7 @@ func TestExamples(t *testing.T) {
 		{
 			name: "HelloWorld",
 			args: exampleToArgs(t, exampleHelloWorld),
-			out:  "Hello, world!\n",
+			out:  "Hello, world! 3.141592653589793\n",
 		},
 		{
 			name: "Average",
