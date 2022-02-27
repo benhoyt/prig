@@ -91,6 +91,6 @@ Prig uses the [golang.org/x/tools/imports](https://golang.org/x/tools/imports) p
 
 If you're looking for a real, POSIX-compatible version of AWK for use in Go programs, see my [GoAWK](https://github.com/benhoyt/goawk) project.
 
-Prig was based on [rp](https://github.com/c-blake/cligen/blob/master/examples/rp.nim), a similar idea for Nim written by [c-blake](https://github.com/c-blake).
+Prig was based on [rp](https://github.com/c-blake/cligen/blob/master/examples/rp.nim), a similar idea for Nim written by [Charles Blake](https://github.com/c-blake).
 
 Prig is licensed under an open source [MIT license](https://github.com/benhoyt/prig/blob/master/LICENSE.txt).
