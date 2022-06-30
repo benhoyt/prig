@@ -24,7 +24,7 @@ import (
 	importspkg "golang.org/x/tools/imports"
 )
 
-const version = "v1.0.0"
+const version = "v1.1.0"
 
 var goVersionRegex = regexp.MustCompile(`^go version go1.(\d+)`)
 
@@ -101,18 +101,23 @@ func main() {
 		}
 	}
 
-	// Use generic Sort/SortMap if Go 1.18+ is installed.
-	sortFuncs := sortNonGeneric
+	// Use non-generic Sort/SortMap if importspkg.Process doesn't support
+	// generics, or we're using a Go that doesn't support generics (<=1.17).
+	sortFuncs := sortGeneric
 	cmd := exec.Command(goExe, "version")
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		matches := goVersionRegex.FindSubmatch(output)
 		if matches != nil {
 			goMinor, _ := strconv.Atoi(string(matches[1]))
-			if goMinor >= 18 { // Go 1.18+ has generics, use them!
-				sortFuncs = sortGeneric
+			if goMinor <= 17 {
+				sortFuncs = sortNonGeneric
 			}
 		}
+	}
+	_, err = importspkg.Process("", []byte("package x\nfunc f[T any]() {}"), nil)
+	if err != nil {
+		sortFuncs = sortNonGeneric
 	}
 
 	// Write source code to buffer
@@ -272,7 +277,7 @@ Built-in functions:
     // return new sorted slice; also Sort(s, Reverse) to sort descending
   SortMap[T int|float64|string](m map[string]T) []KV[T]
     // return sorted slice of key-value pairs
-    // also Sort(s[, Reverse][, ByValue]) to sort descending or by value
+    // also SortMap(s[, Reverse][, ByValue]) to sort descending or by value
 
 Examples:
   # Run an arbitrary Go snippet; don't process input
